@@ -1,6 +1,6 @@
 streamlit==1.35.0
 pandas==2.3.3
-pillow==9.4.0
+pillow==9.3.0       # 9.3.0 yoki 9.2.0 bilan test qiling
 markdown-it-py==4.0.0
 mdurl==0.1.2
 pygments==2.19.2
