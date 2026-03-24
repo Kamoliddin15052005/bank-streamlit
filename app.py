@@ -5,7 +5,7 @@ from datetime import datetime
 import base64
 
 from database import (
-    init_db, is_db_empty,
+    init_db, is_db_empty, USE_PG,
     get_assets, get_asset, create_asset, update_asset, delete_asset,
     change_status, get_asset_history, get_employees, create_employee,
     delete_employee, get_assignments, assign_asset, return_asset,
@@ -19,39 +19,59 @@ st.set_page_config(
     page_title="Bank Asset Management",
     page_icon="🏦",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # ─── CUSTOM CSS ────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Force sidebar always open */
-    section[data-testid="stSidebar"] {
-        width: 240px !important;
-        min-width: 240px !important;
-        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
-        display: block !important;
-        visibility: visible !important;
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    [data-testid="stSidebar"] {display: none !important;}
+    [data-testid="collapsedControl"] {display: none !important;}
+    .block-container {padding-top: 0.5rem !important;}
+
+    /* NAV BAR */
+    .topnav {
+        background: linear-gradient(90deg, #1a3a6e 0%, #0f2347 100%);
+        padding: 0 24px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        box-shadow: 0 2px 12px rgba(26,58,110,0.15);
     }
-    section[data-testid="stSidebar"] > div {
-        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
-        width: 240px !important;
-        height: 100% !important;
+    .topnav-brand {
+        color: white;
+        font-size: 18px;
+        font-weight: 800;
+        padding: 14px 20px 14px 0;
+        margin-right: 16px;
+        border-right: 1px solid rgba(255,255,255,0.2);
+        white-space: nowrap;
     }
-    [data-testid="stSidebarContent"] {
-        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
+    .topnav a {
+        color: rgba(255,255,255,0.75);
+        text-decoration: none;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        white-space: nowrap;
     }
-    [data-testid="collapsedControl"] { display: none !important; }
-    [data-testid="stSidebar"] * { color: white !important; }
-    [data-testid="stSidebar"] .stRadio label {
-        color: rgba(255,255,255,0.85) !important;
-        font-size: 15px;
-        padding: 6px 0;
+    .topnav a:hover { background: rgba(255,255,255,0.12); color: white; }
+    .topnav a.active { background: rgba(255,255,255,0.18); color: white; font-weight: 700; }
+    .topnav-right {
+        margin-left: auto;
+        font-size: 12px;
+        color: rgba(255,255,255,0.5);
+        padding: 14px 0;
     }
-    [data-testid="stSidebar"] .stRadio label:hover { color: #f5c15e !important; }
-    [data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.2) !important;
-    }
+
+    /* CARDS */
     .metric-card {
         background: white;
         border-radius: 12px;
@@ -60,17 +80,16 @@ st.markdown("""
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         margin-bottom: 8px;
     }
-    .metric-card.green { border-left-color: #38a169; }
+    .metric-card.green  { border-left-color: #38a169; }
     .metric-card.yellow { border-left-color: #d69e2e; }
-    .metric-card.red { border-left-color: #e53e3e; }
-    .metric-card.blue { border-left-color: #3182ce; }
+    .metric-card.red    { border-left-color: #e53e3e; }
+    .metric-card.blue   { border-left-color: #3182ce; }
     .metric-val { font-size: 36px; font-weight: 800; color: #1a202c; margin: 0; }
     .metric-lbl { font-size: 12px; color: #718096; text-transform: uppercase; letter-spacing: 1px; margin: 0; }
-    .page-title { font-size: 26px; font-weight: 800; color: #1a3a6e; margin-bottom: 4px; }
-    .page-sub { color: #718096; font-size: 14px; margin-bottom: 20px; }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+
+    .page-title { font-size: 24px; font-weight: 800; color: #1a3a6e; margin-bottom: 2px; }
+    .page-sub   { color: #718096; font-size: 14px; margin-bottom: 16px; }
+
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px; background: #f7fafc;
         border-radius: 10px; padding: 6px;
@@ -81,7 +100,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── INIT + AUTO SEED ─────────────────────────────────────
+# ─── INIT ──────────────────────────────────────────────────
 init_db()
 
 def _auto_seed():
@@ -91,65 +110,29 @@ def _auto_seed():
 
 _auto_seed()
 
-# ─── FORCE SIDEBAR OPEN (JS) ──────────────────────────────
-import streamlit.components.v1 as components
-components.html("""
-<script>
-(function() {
-    function openSidebar() {
-        // Streamlit sidebar collapse button
-        var btn = window.parent.document.querySelector('[data-testid="collapsedControl"]');
-        if (btn) { btn.style.display = 'none'; }
-        
-        var sidebar = window.parent.document.querySelector('section[data-testid="stSidebar"]');
-        if (sidebar) {
-            sidebar.style.width = '240px';
-            sidebar.style.minWidth = '240px';
-            sidebar.style.display = 'block';
-            sidebar.style.visibility = 'visible';
-            // Remove collapsed class if any
-            sidebar.classList.remove('st-emotion-cache-collapsed');
-        }
-    }
-    // Run immediately and after delays
-    openSidebar();
-    setTimeout(openSidebar, 500);
-    setTimeout(openSidebar, 1500);
-})();
-</script>
-""", height=0)
+# ─── SESSION STATE ─────────────────────────────────────────
+if "page" not in st.session_state:
+    st.session_state.page = "📊 Dashboard"
 
+PAGES = ["📊 Dashboard", "💻 Aktivlar", "👥 Xodimlar", "🔗 Tayinlashlar", "📋 Audit Tarixi"]
 
-# ─── SIDEBAR ───────────────────────────────────────────────
-from database import USE_PG
+# ─── TOP NAVIGATION ────────────────────────────────────────
+db_status = "🟢 Supabase" if USE_PG else "🟡 SQLite"
 
-with st.sidebar:
-    st.markdown("""
-    <div style='padding:8px 0 4px 0;'>
-        <span style='font-size:22px;font-weight:800;color:white;'>🏦 BankAsset</span><br>
-        <span style='font-size:12px;color:rgba(255,255,255,0.55);'>Smart Office Platform</span>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown("<hr style='border-color:rgba(255,255,255,0.2);margin:8px 0;'>", unsafe_allow_html=True)
+cols = st.columns([1,1,1,1,1])
+for i, p in enumerate(PAGES):
+    with cols[i]:
+        is_active = st.session_state.page == p
+        if st.button(p, key=f"nav_{i}", use_container_width=True,
+                     type="primary" if is_active else "secondary"):
+            st.session_state.page = p
+            st.rerun()
 
-    page = st.radio(
-        "Menyu",
-        ["📊 Dashboard", "💻 Aktivlar", "👥 Xodimlar", "🔗 Tayinlashlar", "📋 Audit Tarixi"],
-        label_visibility="collapsed"
-    )
+st.markdown(f"<div style='text-align:right;font-size:12px;color:#718096;margin:-8px 0 8px;'>{db_status}</div>",
+            unsafe_allow_html=True)
+st.divider()
 
-    st.markdown("<hr style='border-color:rgba(255,255,255,0.2);margin:8px 0;'>", unsafe_allow_html=True)
-
-    if USE_PG:
-        st.markdown("<div style='color:#68d391;font-size:13px;'>🟢 Supabase ulangan</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div style='color:#f6e05e;font-size:13px;'>🟡 SQLite (lokal)</div>", unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style='font-size:11px;color:rgba(255,255,255,0.35);margin-top:16px;'>
-    Bank Asset Management<br>v2.0 · Streamlit
-    </div>
-    """, unsafe_allow_html=True)
+page = st.session_state.page
 
 # ═══════════════════════════════════════════════════════════
 # 📊 DASHBOARD
@@ -446,7 +429,7 @@ elif page == "🔗 Tayinlashlar":
             st.info("Faol tayinlashlar yo'q")
         else:
             for asgn in assignments:
-                with st.expander(f"🔗 **{asgn['asset_name']}** → {asgn.get('employee_name') or 'Bo\'lim: '+asgn.get('department','—')}"):
+                with st.expander(f"🔗 **{asgn['asset_name']}** → {asgn.get('employee_name') or "Bo'lim: "+asgn.get('department','—')}"):
                     c1, c2, c3 = st.columns([2,2,1])
                     with c1:
                         st.write(f"**Aktiv:** {asgn['asset_name']}")
@@ -531,3 +514,4 @@ elif page == "📋 Audit Tarixi":
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("⬇ CSV yuklab olish", data=csv,
             file_name=f"audit_log_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+
