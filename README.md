@@ -4,7 +4,7 @@ Smart Banking / Smart Office — Bank aktivlarini markazlashtirilgan boshqarish 
 
 ## 🌐 Dastur manzili
 
-**▶ [https://bank-app-nzamuscvmxbfuqc6cdfgfy.streamlit.app](https://bank-app-nzamuscvmxbfuqc6cdfgfy.streamlit.app)**
+**▶ [https://bank-app-nzamuscvmxbfuqc6cdfgfy.streamlit.app](https://bank-app-9ksdpxpxrtdhrqtgqyeg2f.streamlit.app/)**
 
 > Brauzerda oching — hech narsa o'rnatish shart emas.
 
