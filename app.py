@@ -25,16 +25,23 @@ st.set_page_config(
 # ─── CUSTOM CSS ────────────────────────────────────────────
 st.markdown("""
 <style>
-    [data-testid="stSidebar"] {
+    /* Force sidebar always open */
+    section[data-testid="stSidebar"] {
+        width: 240px !important;
+        min-width: 240px !important;
         background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
-        min-width: 220px !important;
+        display: block !important;
+        visibility: visible !important;
     }
-    [data-testid="stSidebar"],
-    [data-testid="stSidebar"] > div,
-    [data-testid="stSidebar"] section,
+    section[data-testid="stSidebar"] > div {
+        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
+        width: 240px !important;
+        height: 100% !important;
+    }
     [data-testid="stSidebarContent"] {
         background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
     }
+    [data-testid="collapsedControl"] { display: none !important; }
     [data-testid="stSidebar"] * { color: white !important; }
     [data-testid="stSidebar"] .stRadio label {
         color: rgba(255,255,255,0.85) !important;
@@ -42,20 +49,6 @@ st.markdown("""
         padding: 6px 0;
     }
     [data-testid="stSidebar"] .stRadio label:hover { color: #f5c15e !important; }
-    [data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
-        color: white !important;
-    }
-    /* Radio button active state */
-    [data-testid="stSidebar"] .stRadio [aria-checked="true"] + div {
-        color: #f5c15e !important;
-        font-weight: 600;
-    }
-    /* Sidebar toggle button */
-    [data-testid="collapsedControl"] {
-        background: #1a3a6e !important;
-        color: white !important;
-    }
-    /* Divider color */
     [data-testid="stSidebar"] hr {
         border-color: rgba(255,255,255,0.2) !important;
     }
@@ -97,6 +90,35 @@ def _auto_seed():
         seed_data.seed()
 
 _auto_seed()
+
+# ─── FORCE SIDEBAR OPEN (JS) ──────────────────────────────
+import streamlit.components.v1 as components
+components.html("""
+<script>
+(function() {
+    function openSidebar() {
+        // Streamlit sidebar collapse button
+        var btn = window.parent.document.querySelector('[data-testid="collapsedControl"]');
+        if (btn) { btn.style.display = 'none'; }
+        
+        var sidebar = window.parent.document.querySelector('section[data-testid="stSidebar"]');
+        if (sidebar) {
+            sidebar.style.width = '240px';
+            sidebar.style.minWidth = '240px';
+            sidebar.style.display = 'block';
+            sidebar.style.visibility = 'visible';
+            // Remove collapsed class if any
+            sidebar.classList.remove('st-emotion-cache-collapsed');
+        }
+    }
+    // Run immediately and after delays
+    openSidebar();
+    setTimeout(openSidebar, 500);
+    setTimeout(openSidebar, 1500);
+})();
+</script>
+""", height=0)
+
 
 # ─── SIDEBAR ───────────────────────────────────────────────
 from database import USE_PG
