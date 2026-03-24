@@ -182,7 +182,7 @@ def create_asset(name, asset_type, category, serial_number, description=""):
             cur.execute(
                 "INSERT INTO assets (name,asset_type,category,serial_number,description) VALUES (%s,%s,%s,%s,%s) RETURNING id",
                 (name, asset_type, category, serial_number, description))
-            asset_id = cur.fetchone()[0]
+            asset_id = cur.fetchone()["id"]
             cur.execute(
                 "INSERT INTO asset_history (asset_id,action,new_status,changed_by,details) VALUES (%s,%s,%s,%s,%s)",
                 (asset_id,"CREATED","REGISTERED","admin",f"'{name}' ro'yxatga olindi"))
@@ -377,15 +377,15 @@ def get_stats():
     conn = get_conn()
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM assets"); total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM assets"); total = cur.fetchone()["count"]
         cur.execute("SELECT status,COUNT(*) FROM assets GROUP BY status")
-        by_status = {r[0]:r[1] for r in cur.fetchall()}
+        by_status = {r["status"]:r["count"] for r in cur.fetchall()}
         cur.execute("SELECT category,COUNT(*) FROM assets GROUP BY category")
-        by_category = {r[0]:r[1] for r in cur.fetchall()}
+        by_category = {r["category"]:r["count"] for r in cur.fetchall()}
         cur.execute("SELECT department,COUNT(*) FROM assignments WHERE is_active=1 AND department!='' GROUP BY department")
-        by_dept = {r[0]:r[1] for r in cur.fetchall() if r[0]}
+        by_dept = {r["department"]:r["count"] for r in cur.fetchall() if r["department"]}
         cur.execute("SELECT COUNT(*) FROM asset_history WHERE created_at>=NOW()-INTERVAL '7 days'")
-        recent = cur.fetchone()[0]
+        recent = cur.fetchone()["count"]
     else:
         total = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
         by_status = dict(conn.execute("SELECT status,COUNT(*) FROM assets GROUP BY status").fetchall())
@@ -409,7 +409,7 @@ def is_db_empty():
     conn = get_conn()
     if USE_PG:
         cur = conn.cursor(); cur.execute("SELECT COUNT(*) FROM assets")
-        count = cur.fetchone()[0]
+        count = cur.fetchone()["count"]
     else:
         count = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
     conn.close(); return count == 0
