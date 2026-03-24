@@ -1,12 +1,22 @@
 import os
 import sqlite3
-from datetime import datetime
 
-# PostgreSQL yoki SQLite — avtomatik tanlanadi
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+# ─── DATABASE URL — Streamlit secrets yoki env ─────────────
+def _get_db_url():
+    # 1. Streamlit Cloud secrets (asosiy usul)
+    try:
+        import streamlit as st
+        url = st.secrets.get("DATABASE_URL", "")
+        if url:
+            return url
+    except Exception:
+        pass
+    # 2. Environment variable (lokal ishlatish uchun)
+    return os.getenv("DATABASE_URL", "")
+
+DATABASE_URL = _get_db_url()
 USE_PG = bool(DATABASE_URL)
 
-# ─── CONNECTION ────────────────────────────────────────────
 def get_conn():
     if USE_PG:
         import psycopg2
@@ -22,17 +32,6 @@ def get_conn():
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
-def _exec(conn, sql, params=()):
-    """Universal execute — SQLite va PostgreSQL uchun"""
-    if USE_PG:
-        sql = sql.replace("?", "%s")
-        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-        sql = sql.replace("datetime('now')", "NOW()")
-        sql = sql.replace("datetime('now','-7 days')", "NOW() - INTERVAL '7 days'")
-    cur = conn.cursor()
-    cur.execute(sql, params)
-    return cur
-
 def _fetchall(cur):
     rows = cur.fetchall()
     return [dict(r) for r in rows]
@@ -41,21 +40,11 @@ def _fetchone(cur):
     r = cur.fetchone()
     return dict(r) if r else None
 
-def _lastid(conn, cur, table="assets"):
-    if USE_PG:
-        cur2 = conn.cursor()
-        cur2.execute(f"SELECT lastval()")
-        return cur2.fetchone()[0]
-    else:
-        return cur.lastrowid
-
-# ─── INIT DB ───────────────────────────────────────────────
 def init_db():
     conn = get_conn()
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS assets (
+        cur.execute("""CREATE TABLE IF NOT EXISTS assets (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             asset_type TEXT NOT NULL,
@@ -65,84 +54,61 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'REGISTERED',
             image_url TEXT,
             created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP
-        )""")
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS employees (
+            updated_at TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS employees (
             id SERIAL PRIMARY KEY,
             full_name TEXT NOT NULL,
             employee_id TEXT UNIQUE NOT NULL,
             department TEXT NOT NULL,
-            branch TEXT,
-            email TEXT,
-            phone TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        )""")
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS assignments (
+            branch TEXT, email TEXT, phone TEXT,
+            created_at TIMESTAMP DEFAULT NOW())""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS assignments (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
             employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
-            department TEXT,
-            branch TEXT,
-            notes TEXT,
+            department TEXT, branch TEXT, notes TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
             assigned_at TIMESTAMP DEFAULT NOW(),
-            returned_at TIMESTAMP
-        )""")
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS asset_history (
+            returned_at TIMESTAMP)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS asset_history (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
             action TEXT NOT NULL,
-            old_status TEXT,
-            new_status TEXT,
+            old_status TEXT, new_status TEXT,
             changed_by TEXT NOT NULL DEFAULT 'admin',
-            reason TEXT,
-            details TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        )""")
+            reason TEXT, details TEXT,
+            created_at TIMESTAMP DEFAULT NOW())""")
         conn.commit()
     else:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            asset_type TEXT NOT NULL,
+            name TEXT NOT NULL, asset_type TEXT NOT NULL,
             category TEXT NOT NULL DEFAULT 'IT',
             serial_number TEXT UNIQUE NOT NULL,
-            description TEXT,
-            status TEXT NOT NULL DEFAULT 'REGISTERED',
+            description TEXT, status TEXT NOT NULL DEFAULT 'REGISTERED',
             image_url TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT
-        );
+            updated_at TEXT);
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            full_name TEXT NOT NULL,
-            employee_id TEXT UNIQUE NOT NULL,
-            department TEXT NOT NULL,
-            branch TEXT, email TEXT, phone TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
+            full_name TEXT NOT NULL, employee_id TEXT UNIQUE NOT NULL,
+            department TEXT NOT NULL, branch TEXT, email TEXT, phone TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')));
         CREATE TABLE IF NOT EXISTS assignments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            asset_id INTEGER NOT NULL REFERENCES assets(id),
-            employee_id INTEGER REFERENCES employees(id),
+            asset_id INTEGER NOT NULL, employee_id INTEGER,
             department TEXT, branch TEXT, notes TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
             assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
-            returned_at TEXT
-        );
+            returned_at TEXT);
         CREATE TABLE IF NOT EXISTS asset_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            asset_id INTEGER NOT NULL REFERENCES assets(id),
-            action TEXT NOT NULL,
+            asset_id INTEGER NOT NULL, action TEXT NOT NULL,
             old_status TEXT, new_status TEXT,
             changed_by TEXT NOT NULL DEFAULT 'admin',
             reason TEXT, details TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
+            created_at TEXT NOT NULL DEFAULT (datetime('now')));
         """)
         conn.commit()
     conn.close()
@@ -173,15 +139,12 @@ DEPARTMENTS = ["IT","Moliya","Buxgalteriya","HR","Marketing","Xavfsizlik","Boshq
 def get_assets(search="", status="", category=""):
     conn = get_conn()
     if USE_PG:
-        q = "SELECT * FROM assets WHERE 1=1"
-        p = []
+        q = "SELECT * FROM assets WHERE 1=1"; p = []
         if search:
             q += " AND (name ILIKE %s OR serial_number ILIKE %s OR asset_type ILIKE %s)"
-            p += [f"%{search}%", f"%{search}%", f"%{search}%"]
-        if status:
-            q += " AND status = %s"; p.append(status)
-        if category:
-            q += " AND category = %s"; p.append(category)
+            p += [f"%{search}%"]*3
+        if status:  q += " AND status = %s"; p.append(status)
+        if category: q += " AND category = %s"; p.append(category)
         q += " ORDER BY id DESC"
         cur = conn.cursor(); cur.execute(q, p)
         rows = _fetchall(cur); conn.close(); return rows
@@ -194,14 +157,12 @@ def get_assets(search="", status="", category=""):
         if category: q += " AND category = ?"; p.append(category)
         q += " ORDER BY id DESC"
         rows = conn.execute(q, p).fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
+        conn.close(); return [dict(r) for r in rows]
 
 def get_asset(asset_id):
     conn = get_conn()
     if USE_PG:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM assets WHERE id=%s", (asset_id,))
+        cur = conn.cursor(); cur.execute("SELECT * FROM assets WHERE id=%s", (asset_id,))
         r = _fetchone(cur); conn.close(); return r
     else:
         r = conn.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
@@ -214,23 +175,19 @@ def create_asset(name, asset_type, category, serial_number, description=""):
             cur = conn.cursor()
             cur.execute(
                 "INSERT INTO assets (name,asset_type,category,serial_number,description) VALUES (%s,%s,%s,%s,%s) RETURNING id",
-                (name, asset_type, category, serial_number, description)
-            )
+                (name, asset_type, category, serial_number, description))
             asset_id = cur.fetchone()[0]
             cur.execute(
                 "INSERT INTO asset_history (asset_id,action,new_status,changed_by,details) VALUES (%s,%s,%s,%s,%s)",
-                (asset_id, "CREATED", "REGISTERED", "admin", f"'{name}' ro'yxatga olindi")
-            )
+                (asset_id,"CREATED","REGISTERED","admin",f"'{name}' ro'yxatga olindi"))
         else:
             conn.execute(
                 "INSERT INTO assets (name,asset_type,category,serial_number,description) VALUES (?,?,?,?,?)",
-                (name, asset_type, category, serial_number, description)
-            )
+                (name, asset_type, category, serial_number, description))
             asset_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.execute(
                 "INSERT INTO asset_history (asset_id,action,new_status,changed_by,details) VALUES (?,?,?,?,?)",
-                (asset_id, "CREATED", "REGISTERED", "admin", f"'{name}' ro'yxatga olindi")
-            )
+                (asset_id,"CREATED","REGISTERED","admin",f"'{name}' ro'yxatga olindi"))
         conn.commit(); conn.close()
         return True, "Aktiv muvaffaqiyatli qo'shildi!"
     except Exception as e:
@@ -244,7 +201,7 @@ def update_asset(asset_id, name, asset_type, category, description):
     if USE_PG:
         cur = conn.cursor()
         cur.execute("UPDATE assets SET name=%s,asset_type=%s,category=%s,description=%s,updated_at=NOW() WHERE id=%s",
-                    (name, asset_type, category, description, asset_id))
+                    (name,asset_type,category,description,asset_id))
         cur.execute("INSERT INTO asset_history (asset_id,action,changed_by,details) VALUES (%s,%s,%s,%s)",
                     (asset_id,"UPDATED","admin","Ma'lumotlar yangilandi"))
     else:
@@ -257,46 +214,39 @@ def update_asset(asset_id, name, asset_type, category, description):
 def delete_asset(asset_id):
     conn = get_conn()
     if USE_PG:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM assets WHERE id=%s", (asset_id,))
+        cur = conn.cursor(); cur.execute("DELETE FROM assets WHERE id=%s",(asset_id,))
     else:
-        conn.execute("DELETE FROM asset_history WHERE asset_id=?", (asset_id,))
-        conn.execute("DELETE FROM assignments WHERE asset_id=?", (asset_id,))
-        conn.execute("DELETE FROM assets WHERE id=?", (asset_id,))
+        conn.execute("DELETE FROM asset_history WHERE asset_id=?",(asset_id,))
+        conn.execute("DELETE FROM assignments WHERE asset_id=?",(asset_id,))
+        conn.execute("DELETE FROM assets WHERE id=?",(asset_id,))
     conn.commit(); conn.close()
 
 def change_status(asset_id, new_status, reason="", changed_by="admin"):
     conn = get_conn()
     if USE_PG:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM assets WHERE id=%s", (asset_id,))
+        cur = conn.cursor(); cur.execute("SELECT * FROM assets WHERE id=%s",(asset_id,))
         asset = _fetchone(cur)
     else:
-        asset = conn.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
-        asset = dict(asset) if asset else None
-    if not asset:
-        conn.close(); return False, "Aktiv topilmadi"
+        r = conn.execute("SELECT * FROM assets WHERE id=?",(asset_id,)).fetchone()
+        asset = dict(r) if r else None
+    if not asset: conn.close(); return False, "Aktiv topilmadi"
     old_status = asset["status"]
     if new_status not in ALLOWED.get(old_status, []):
         conn.close()
         return False, f"{STATUS_UZ[old_status]} → {STATUS_UZ[new_status]} o'tish ruxsat etilmagan!"
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("UPDATE assets SET status=%s,updated_at=NOW() WHERE id=%s", (new_status, asset_id))
-        if new_status == "REGISTERED" and old_status == "ASSIGNED":
-            cur.execute("UPDATE assignments SET is_active=0,returned_at=NOW() WHERE asset_id=%s AND is_active=1", (asset_id,))
-        cur.execute(
-            "INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,reason) VALUES (%s,%s,%s,%s,%s,%s)",
-            (asset_id,"STATUS_CHANGED",old_status,new_status,changed_by,reason)
-        )
+        cur.execute("UPDATE assets SET status=%s,updated_at=NOW() WHERE id=%s",(new_status,asset_id))
+        if new_status=="REGISTERED" and old_status=="ASSIGNED":
+            cur.execute("UPDATE assignments SET is_active=0,returned_at=NOW() WHERE asset_id=%s AND is_active=1",(asset_id,))
+        cur.execute("INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,reason) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (asset_id,"STATUS_CHANGED",old_status,new_status,changed_by,reason))
     else:
-        conn.execute("UPDATE assets SET status=?,updated_at=datetime('now') WHERE id=?", (new_status, asset_id))
-        if new_status == "REGISTERED" and old_status == "ASSIGNED":
-            conn.execute("UPDATE assignments SET is_active=0,returned_at=datetime('now') WHERE asset_id=? AND is_active=1", (asset_id,))
-        conn.execute(
-            "INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,reason) VALUES (?,?,?,?,?,?)",
-            (asset_id,"STATUS_CHANGED",old_status,new_status,changed_by,reason)
-        )
+        conn.execute("UPDATE assets SET status=?,updated_at=datetime('now') WHERE id=?",(new_status,asset_id))
+        if new_status=="REGISTERED" and old_status=="ASSIGNED":
+            conn.execute("UPDATE assignments SET is_active=0,returned_at=datetime('now') WHERE asset_id=? AND is_active=1",(asset_id,))
+        conn.execute("INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,reason) VALUES (?,?,?,?,?,?)",
+                     (asset_id,"STATUS_CHANGED",old_status,new_status,changed_by,reason))
     conn.commit(); conn.close()
     return True, f"Status: {STATUS_UZ[old_status]} → {STATUS_UZ[new_status]}"
 
@@ -304,10 +254,10 @@ def get_asset_history(asset_id):
     conn = get_conn()
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM asset_history WHERE asset_id=%s ORDER BY created_at DESC", (asset_id,))
+        cur.execute("SELECT * FROM asset_history WHERE asset_id=%s ORDER BY created_at DESC",(asset_id,))
         rows = _fetchall(cur); conn.close(); return rows
     else:
-        rows = conn.execute("SELECT * FROM asset_history WHERE asset_id=? ORDER BY created_at DESC", (asset_id,)).fetchall()
+        rows = conn.execute("SELECT * FROM asset_history WHERE asset_id=? ORDER BY created_at DESC",(asset_id,)).fetchall()
         conn.close(); return [dict(r) for r in rows]
 
 # ─── EMPLOYEES ─────────────────────────────────────────────
@@ -341,61 +291,53 @@ def create_employee(full_name, employee_id, department, branch="", email="", pho
 def delete_employee(emp_id):
     conn = get_conn()
     if USE_PG:
-        cur = conn.cursor(); cur.execute("DELETE FROM employees WHERE id=%s", (emp_id,))
+        cur = conn.cursor(); cur.execute("DELETE FROM employees WHERE id=%s",(emp_id,))
     else:
-        conn.execute("DELETE FROM employees WHERE id=?", (emp_id,))
+        conn.execute("DELETE FROM employees WHERE id=?",(emp_id,))
     conn.commit(); conn.close()
 
 # ─── ASSIGNMENTS ───────────────────────────────────────────
 def get_assignments(active_only=True):
     conn = get_conn()
+    q = """SELECT a.*,ast.name as asset_name,ast.serial_number,
+                  ast.status as asset_status,ast.category,
+                  e.full_name as employee_name,e.department as emp_dept
+           FROM assignments a JOIN assets ast ON a.asset_id=ast.id
+           LEFT JOIN employees e ON a.employee_id=e.id"""
+    if active_only: q += " WHERE a.is_active=1"
+    q += " ORDER BY a.assigned_at DESC"
     if USE_PG:
-        q = """SELECT a.*,ast.name as asset_name,ast.serial_number,ast.status as asset_status,
-                      ast.category,e.full_name as employee_name,e.department as emp_dept
-               FROM assignments a JOIN assets ast ON a.asset_id=ast.id
-               LEFT JOIN employees e ON a.employee_id=e.id"""
-        if active_only: q += " WHERE a.is_active=1"
-        q += " ORDER BY a.assigned_at DESC"
         cur = conn.cursor(); cur.execute(q)
         rows = _fetchall(cur); conn.close(); return rows
     else:
-        q = """SELECT a.*,ast.name as asset_name,ast.serial_number,
-                      ast.status as asset_status,ast.category,
-                      e.full_name as employee_name,e.department as emp_dept
-               FROM assignments a JOIN assets ast ON a.asset_id=ast.id
-               LEFT JOIN employees e ON a.employee_id=e.id"""
-        if active_only: q += " WHERE a.is_active=1"
-        q += " ORDER BY a.assigned_at DESC"
         rows = conn.execute(q).fetchall()
         conn.close(); return [dict(r) for r in rows]
 
 def assign_asset(asset_id, employee_id=None, department="", branch="", notes=""):
     conn = get_conn()
     if USE_PG:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM assets WHERE id=%s", (asset_id,))
+        cur = conn.cursor(); cur.execute("SELECT * FROM assets WHERE id=%s",(asset_id,))
         asset = _fetchone(cur)
     else:
-        r = conn.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
+        r = conn.execute("SELECT * FROM assets WHERE id=?",(asset_id,)).fetchone()
         asset = dict(r) if r else None
-    if not asset:
-        conn.close(); return False, "Aktiv topilmadi"
+    if not asset: conn.close(); return False, "Aktiv topilmadi"
     if asset["status"] in ("LOST","WRITTEN_OFF","IN_REPAIR"):
         conn.close(); return False, f"{STATUS_UZ[asset['status']]} aktiv tayinlanmaydi!"
     old_status = asset["status"]
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("UPDATE assignments SET is_active=0,returned_at=NOW() WHERE asset_id=%s AND is_active=1", (asset_id,))
+        cur.execute("UPDATE assignments SET is_active=0,returned_at=NOW() WHERE asset_id=%s AND is_active=1",(asset_id,))
         cur.execute("INSERT INTO assignments (asset_id,employee_id,department,branch,notes) VALUES (%s,%s,%s,%s,%s)",
-                    (asset_id, employee_id or None, department, branch, notes))
-        cur.execute("UPDATE assets SET status='ASSIGNED',updated_at=NOW() WHERE id=%s", (asset_id,))
+                    (asset_id,employee_id or None,department,branch,notes))
+        cur.execute("UPDATE assets SET status='ASSIGNED',updated_at=NOW() WHERE id=%s",(asset_id,))
         cur.execute("INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,details) VALUES (%s,%s,%s,%s,%s,%s)",
                     (asset_id,"ASSIGNED",old_status,"ASSIGNED","admin",f"Bo'lim: {department}"))
     else:
-        conn.execute("UPDATE assignments SET is_active=0,returned_at=datetime('now') WHERE asset_id=? AND is_active=1", (asset_id,))
+        conn.execute("UPDATE assignments SET is_active=0,returned_at=datetime('now') WHERE asset_id=? AND is_active=1",(asset_id,))
         conn.execute("INSERT INTO assignments (asset_id,employee_id,department,branch,notes) VALUES (?,?,?,?,?)",
-                     (asset_id, employee_id or None, department, branch, notes))
-        conn.execute("UPDATE assets SET status='ASSIGNED',updated_at=datetime('now') WHERE id=?", (asset_id,))
+                     (asset_id,employee_id or None,department,branch,notes))
+        conn.execute("UPDATE assets SET status='ASSIGNED',updated_at=datetime('now') WHERE id=?",(asset_id,))
         conn.execute("INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,details) VALUES (?,?,?,?,?,?)",
                      (asset_id,"ASSIGNED",old_status,"ASSIGNED","admin",f"Bo'lim: {department}"))
     conn.commit(); conn.close()
@@ -404,23 +346,21 @@ def assign_asset(asset_id, employee_id=None, department="", branch="", notes="")
 def return_asset(assignment_id, reason="", changed_by="admin"):
     conn = get_conn()
     if USE_PG:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM assignments WHERE id=%s", (assignment_id,))
+        cur = conn.cursor(); cur.execute("SELECT * FROM assignments WHERE id=%s",(assignment_id,))
         asgn = _fetchone(cur)
     else:
-        r = conn.execute("SELECT * FROM assignments WHERE id=?", (assignment_id,)).fetchone()
+        r = conn.execute("SELECT * FROM assignments WHERE id=?",(assignment_id,)).fetchone()
         asgn = dict(r) if r else None
-    if not asgn:
-        conn.close(); return False, "Tayinlash topilmadi"
+    if not asgn: conn.close(); return False, "Tayinlash topilmadi"
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("UPDATE assignments SET is_active=0,returned_at=NOW() WHERE id=%s", (assignment_id,))
-        cur.execute("UPDATE assets SET status='REGISTERED',updated_at=NOW() WHERE id=%s", (asgn["asset_id"],))
+        cur.execute("UPDATE assignments SET is_active=0,returned_at=NOW() WHERE id=%s",(assignment_id,))
+        cur.execute("UPDATE assets SET status='REGISTERED',updated_at=NOW() WHERE id=%s",(asgn["asset_id"],))
         cur.execute("INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,reason) VALUES (%s,%s,%s,%s,%s,%s)",
                     (asgn["asset_id"],"RETURNED","ASSIGNED","REGISTERED",changed_by,reason))
     else:
-        conn.execute("UPDATE assignments SET is_active=0,returned_at=datetime('now') WHERE id=?", (assignment_id,))
-        conn.execute("UPDATE assets SET status='REGISTERED',updated_at=datetime('now') WHERE id=?", (asgn["asset_id"],))
+        conn.execute("UPDATE assignments SET is_active=0,returned_at=datetime('now') WHERE id=?",(assignment_id,))
+        conn.execute("UPDATE assets SET status='REGISTERED',updated_at=datetime('now') WHERE id=?",(asgn["asset_id"],))
         conn.execute("INSERT INTO asset_history (asset_id,action,old_status,new_status,changed_by,reason) VALUES (?,?,?,?,?,?)",
                      (asgn["asset_id"],"RETURNED","ASSIGNED","REGISTERED",changed_by,reason))
     conn.commit(); conn.close()
@@ -431,14 +371,14 @@ def get_stats():
     conn = get_conn()
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) as c FROM assets"); total = cur.fetchone()[0]
-        cur.execute("SELECT status,COUNT(*) as c FROM assets GROUP BY status")
+        cur.execute("SELECT COUNT(*) FROM assets"); total = cur.fetchone()[0]
+        cur.execute("SELECT status,COUNT(*) FROM assets GROUP BY status")
         by_status = {r[0]:r[1] for r in cur.fetchall()}
-        cur.execute("SELECT category,COUNT(*) as c FROM assets GROUP BY category")
+        cur.execute("SELECT category,COUNT(*) FROM assets GROUP BY category")
         by_category = {r[0]:r[1] for r in cur.fetchall()}
         cur.execute("SELECT department,COUNT(*) FROM assignments WHERE is_active=1 AND department!='' GROUP BY department")
         by_dept = {r[0]:r[1] for r in cur.fetchall() if r[0]}
-        cur.execute("SELECT COUNT(*) FROM asset_history WHERE created_at >= NOW()-INTERVAL '7 days'")
+        cur.execute("SELECT COUNT(*) FROM asset_history WHERE created_at>=NOW()-INTERVAL '7 days'")
         recent = cur.fetchone()[0]
     else:
         total = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
@@ -453,10 +393,10 @@ def get_all_history(limit=50):
     conn = get_conn()
     if USE_PG:
         cur = conn.cursor()
-        cur.execute("SELECT h.*,a.name as asset_name FROM asset_history h JOIN assets a ON h.asset_id=a.id ORDER BY h.created_at DESC LIMIT %s", (limit,))
+        cur.execute("SELECT h.*,a.name as asset_name FROM asset_history h JOIN assets a ON h.asset_id=a.id ORDER BY h.created_at DESC LIMIT %s",(limit,))
         rows = _fetchall(cur); conn.close(); return rows
     else:
-        rows = conn.execute("SELECT h.*,a.name as asset_name FROM asset_history h JOIN assets a ON h.asset_id=a.id ORDER BY h.created_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = conn.execute("SELECT h.*,a.name as asset_name FROM asset_history h JOIN assets a ON h.asset_id=a.id ORDER BY h.created_at DESC LIMIT ?",(limit,)).fetchall()
         conn.close(); return [dict(r) for r in rows]
 
 def is_db_empty():
@@ -466,5 +406,4 @@ def is_db_empty():
         count = cur.fetchone()[0]
     else:
         count = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
-    conn.close()
-    return count == 0
+    conn.close(); return count == 0
