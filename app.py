@@ -26,8 +26,14 @@ st.set_page_config(
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%);
+        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
         min-width: 220px !important;
+    }
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"] > div,
+    [data-testid="stSidebar"] section,
+    [data-testid="stSidebarContent"] {
+        background: linear-gradient(180deg, #1a3a6e 0%, #0f2347 100%) !important;
     }
     [data-testid="stSidebar"] * { color: white !important; }
     [data-testid="stSidebar"] .stRadio label {
@@ -36,10 +42,22 @@ st.markdown("""
         padding: 6px 0;
     }
     [data-testid="stSidebar"] .stRadio label:hover { color: #f5c15e !important; }
+    [data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
+        color: white !important;
+    }
+    /* Radio button active state */
+    [data-testid="stSidebar"] .stRadio [aria-checked="true"] + div {
+        color: #f5c15e !important;
+        font-weight: 600;
+    }
     /* Sidebar toggle button */
     [data-testid="collapsedControl"] {
         background: #1a3a6e !important;
         color: white !important;
+    }
+    /* Divider color */
+    [data-testid="stSidebar"] hr {
+        border-color: rgba(255,255,255,0.2) !important;
     }
     .metric-card {
         background: white;
@@ -81,27 +99,32 @@ def _auto_seed():
 _auto_seed()
 
 # ─── SIDEBAR ───────────────────────────────────────────────
+from database import USE_PG
+
 with st.sidebar:
-    st.markdown("## 🏦 BankAsset")
-    st.markdown("*Smart Office Platform*")
-    st.divider()
+    st.markdown("""
+    <div style='padding:8px 0 4px 0;'>
+        <span style='font-size:22px;font-weight:800;color:white;'>🏦 BankAsset</span><br>
+        <span style='font-size:12px;color:rgba(255,255,255,0.55);'>Smart Office Platform</span>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:rgba(255,255,255,0.2);margin:8px 0;'>", unsafe_allow_html=True)
 
     page = st.radio(
         "Menyu",
         ["📊 Dashboard", "💻 Aktivlar", "👥 Xodimlar", "🔗 Tayinlashlar", "📋 Audit Tarixi"],
         label_visibility="collapsed"
     )
-    st.divider()
 
-    # DB holati
-    from database import USE_PG
+    st.markdown("<hr style='border-color:rgba(255,255,255,0.2);margin:8px 0;'>", unsafe_allow_html=True)
+
     if USE_PG:
-        st.success("🟢 Supabase ulangan")
+        st.markdown("<div style='color:#68d391;font-size:13px;'>🟢 Supabase ulangan</div>", unsafe_allow_html=True)
     else:
-        st.warning("🟡 SQLite (lokal)")
+        st.markdown("<div style='color:#f6e05e;font-size:13px;'>🟡 SQLite (lokal)</div>", unsafe_allow_html=True)
 
     st.markdown("""
-    <div style='font-size:11px; color:rgba(255,255,255,0.4); margin-top:12px;'>
+    <div style='font-size:11px;color:rgba(255,255,255,0.35);margin-top:16px;'>
     Bank Asset Management<br>v2.0 · Streamlit
     </div>
     """, unsafe_allow_html=True)
