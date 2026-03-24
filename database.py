@@ -18,14 +18,20 @@ DATABASE_URL = _get_db_url()
 USE_PG = bool(DATABASE_URL)
 
 def get_conn():
+    global USE_PG
     if USE_PG:
-        import psycopg2
-        import psycopg2.extras
-        url = DATABASE_URL
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
-        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
-        return conn
+        try:
+            import psycopg2
+            import psycopg2.extras
+            url = DATABASE_URL
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql://", 1)
+            conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+            return conn
+        except Exception as e:
+            import streamlit as st
+            st.error(f"⚠️ PostgreSQL ulanmadi: {e}\n\nIltimos, Streamlit Secrets'da DATABASE_URL ni tekshiring yoki o'chiring (SQLite ishlatish uchun).")
+            st.stop()
     else:
         conn = sqlite3.connect("bank_assets.db", check_same_thread=False)
         conn.row_factory = sqlite3.Row
