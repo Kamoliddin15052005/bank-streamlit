@@ -6,7 +6,8 @@ from datetime import datetime
 import base64
 
 from database import (
-    init_db, get_assets, get_asset, create_asset, update_asset, delete_asset,
+    init_db, is_db_empty,
+    get_assets, get_asset, create_asset, update_asset, delete_asset,
     change_status, get_asset_history, get_employees, create_employee,
     delete_employee, get_assignments, assign_asset, return_asset,
     get_stats, get_all_history,
@@ -91,8 +92,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── INIT ──────────────────────────────────────────────────
+# ─── INIT + AUTO SEED ─────────────────────────────────────
 init_db()
+
+# Ma'lumotlar bo'sh bo'lsa demo ma'lumotlar yuklansin
+def _auto_seed():
+    if is_db_empty():
+        import seed_data
+        seed_data.seed()
+
+_auto_seed()
 
 # ─── SIDEBAR ───────────────────────────────────────────────
 with st.sidebar:
